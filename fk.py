@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from marshmallow import ValidationError
-from datetime import datetime
+from datetime import datetime,timezone
 import os
 
 app = Flask(__name__)
@@ -112,7 +112,7 @@ class AlertSchema(ma.Schema):
 
 class DeviceSchema(ma.Schema):
     id = ma.Integer(dump_only=True)
-    esp32_status = ma.Integer(required=True)
+    esp32_status = ma.Integer(dump_only=True)
     mpu_status = ma.Integer(required=True)
     gps_status = ma.Integer(required=True)
     last_seen = ma.String(required=True)
@@ -266,12 +266,36 @@ def add_device():
     except ValidationError as err:
         return jsonify(err.messages), 400
 
-    new_device = Device(**device_data)
+    # Server reception time
+    current_time = datetime.now(timezone.utc).isoformat(
+        timespec="seconds"
+    )
 
-    db.session.add(new_device)
-    db.session.commit()
+    # Check existing device
+    device = Device.query.first()
 
-    return jsonify(device_schema.dump(new_device)), 201
+    if device:
+        device.mpu_status = device_data["mpu_status"]
+        device.gps_status = device_data["gps_status"]
+        device.last_seen = current_time
+        device.esp32_status = 1
+
+    else:
+        device = Device(
+            esp32_status=1,
+            mpu_status=device_data["mpu_status"],
+            gps_status=device_data["gps_status"],
+            last_seen=current_time
+        )
+        db.session.add(device)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify(device_schema.dump(device)), 200
 
 #FLASK->WEB
 @app.route('/device', methods=['GET'])
@@ -279,6 +303,36 @@ def get_devices():
     devices = Device.query.all()
 
     return jsonify(devices_schema.dump(devices)), 200
+
+#FLASK->WEB(CHECKS STATUS)
+@app.route('/device/status', methods=['GET'])
+def device_status():
+
+    device = Device.query.first()
+
+    if not device:
+        return jsonify({
+            "esp32_status": 0,
+            "mpu_status": 0,
+            "gps_status": 0
+        }), 200
+
+    last_seen = datetime.fromisoformat(device.last_seen)
+
+    elapsed = (
+        datetime.now(timezone.utc) - last_seen
+    ).total_seconds()
+
+    # 10-second timeout
+    device.esp32_status = 1 if elapsed < 10 else 0
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify(device_schema.dump(device)), 200
 
 #ESP->FLASK
 
