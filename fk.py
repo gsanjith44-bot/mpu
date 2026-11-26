@@ -62,12 +62,12 @@ class Alert(db.Model):
 
 class Device(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    esp32_status = db.Column(db.Integer)
+    esp32_status = db.Column(db.Integer, default=0)
     mpu_status = db.Column(db.Integer)
     gps_status = db.Column(db.Integer)
     timestamp = db.Column(db.String(100))
 
-    def __init__(self, esp32_status, mpu_status, gps_status, last_seen):
+    def __init__(self, esp32_status, mpu_status, gps_status, timestamp):
         self.esp32_status = esp32_status
         self.mpu_status = mpu_status
         self.gps_status = gps_status
@@ -115,7 +115,7 @@ class DeviceSchema(ma.Schema):
     esp32_status = ma.Integer(dump_only=True)
     mpu_status = ma.Integer(required=True)
     gps_status = ma.Integer(required=True)
-    timestamp = ma.String(required=True)
+    timestamp = ma.String(dump_only=True)
 
 
 class WalkingSchema(ma.Schema):
@@ -277,7 +277,7 @@ def add_device():
     if device:
         device.mpu_status = device_data["mpu_status"]
         device.gps_status = device_data["gps_status"]
-        device.timestamp = device_data["current_time"]
+        device.timestamp = current_time
         device.esp32_status = 1
 
     else:
