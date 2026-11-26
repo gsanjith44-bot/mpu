@@ -246,14 +246,21 @@ def update_alert(id):
         return jsonify({"error": "Alert not found"}), 404
 
     data = request.get_json()
+
+    if not data or "status" not in data:
+        return jsonify({"error": "Status is required"}), 400
+    
     status = data.get('status')
 
     if status not in [0, 1]:
         return jsonify({"error": "Invalid status"}), 400
-
-    alert.status = status
-    db.session.commit()
-
+    
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
     return jsonify(alert_schema.dump(alert)), 200
 
 #ESP->FLASK
@@ -317,7 +324,7 @@ def device_status():
             "gps_status": 0
         }), 200
 
-    last_seen = datetime.fromisoformat(device.last_seen)
+    last_seen = datetime.fromisoformat(device.timestamp)
 
     elapsed = (
         datetime.now(timezone.utc) - last_seen
