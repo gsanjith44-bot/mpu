@@ -65,14 +65,12 @@ class Device(db.Model):
     esp32_status = db.Column(db.Integer)
     mpu_status = db.Column(db.Integer)
     gps_status = db.Column(db.Integer)
-    gprs_status = db.Column(db.Integer)
     last_seen = db.Column(db.String(100))
 
-    def __init__(self, esp32_status, mpu_status, gps_status, gprs_status, last_seen):
+    def __init__(self, esp32_status, mpu_status, gps_status, last_seen):
         self.esp32_status = esp32_status
         self.mpu_status = mpu_status
         self.gps_status = gps_status
-        self.gprs_status = gprs_status
         self.last_seen = last_seen
 
 
@@ -117,7 +115,6 @@ class DeviceSchema(ma.Schema):
     esp32_status = ma.Integer(required=True)
     mpu_status = ma.Integer(required=True)
     gps_status = ma.Integer(required=True)
-    gprs_status = ma.Integer(required=True)
     last_seen = ma.String(required=True)
 
 
