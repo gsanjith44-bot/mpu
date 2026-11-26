@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from marshmallow import ValidationError
+from datetime import datetime
 import os
 
 app = Flask(__name__)
@@ -151,19 +152,41 @@ def add_activity():
     # Receive JSON from ESP32
     data = request.get_json()
 
+    # Select ONLY activity-related data
+    activity_data = {
+        "activity_label": data["activity_label"],
+        "confidence": data["confidence"],
+        "timestamp": data["timestamp"]
+    }
+
     # Validate JSON using Marshmallow
     try:
-        activity_data = activity_schema.load(data)
+        activity_data = activity_schema.load(activity_data)
     except ValidationError as err:
         return jsonify(err.messages), 400
 
     # Create database object
     new_activity = Activity(**activity_data)
-
-    # Save into database
     db.session.add(new_activity)
-    db.session.commit()
 
+    # Automatically create alert for FALL
+    if new_activity.activity_label == "FALL":
+
+        new_alert = Alert(
+            alert_type="FALL",
+            timestamp=new_activity.timestamp,
+            status=1
+        )
+
+        db.session.add(new_alert)
+
+    # Save both records together
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
     # Send response
     return jsonify(activity_schema.dump(new_activity)), 201
 
@@ -184,8 +207,14 @@ def get_activities():
 def add_location():
     data = request.get_json()
 
+    # Extract location data from combined JSON
+    location_data = {
+        "latitude": data["latitude"],
+        "longitude": data["longitude"],
+        "timestamp": data["timestamp"]
+    }
     try:
-        location_data = location_schema.load(data)
+        location_data = location_schema.load(location_data)
     except ValidationError as err:
         return jsonify(err.messages), 400
 
@@ -203,23 +232,6 @@ def get_locations():
 
     return jsonify(locations_schema.dump(locations)), 200
 
-#ALERT ESP32->FLASK
-
-@app.route('/alert', methods=['POST'])
-def add_alert():
-    data = request.get_json()
-
-    try:
-        alert_data = alert_schema.load(data)
-    except ValidationError as err:
-        return jsonify(err.messages), 400
-
-    new_alert = Alert(**alert_data)
-
-    db.session.add(new_alert)
-    db.session.commit()
-
-    return jsonify(alert_schema.dump(new_alert)), 201
 
 #FLASK->WEB
 @app.route('/alert', methods=['GET'])
@@ -272,21 +284,52 @@ def get_devices():
     return jsonify(devices_schema.dump(devices)), 200
 
 #ESP->FLASK
+
+WALKING_SPEED = 4  # km/hour
+
+
 @app.route('/walking', methods=['POST'])
 def add_walking():
     data = request.get_json()
 
+    # Check activity
+    if data.get("activity_label") != "WALK":
+        return jsonify({"message": "Not walking"}), 200
+
+    # Extract RTC date
     try:
-        walking_data = walking_schema.load(data)
-    except ValidationError as err:
-        return jsonify(err.messages), 400
+        walk_date = datetime.strptime(
+            data["timestamp"], "%Y-%m-%d %H:%M:%S"
+        ).date()
+    except (KeyError, ValueError):
+        return jsonify({"error": "Invalid timestamp"}), 400
 
-    new_walking = Walking(**walking_data)
+    # Find existing date
+    walking_record = Walking.query.filter_by(
+        date=str(walk_date)
+    ).first()
 
-    db.session.add(new_walking)
-    db.session.commit()
+    # Distance for 1 second
+    new_distance = WALKING_SPEED / 3600
 
-    return jsonify(walking_schema.dump(new_walking)), 201
+    if walking_record:
+        walking_record.distance_km += new_distance
+    else:
+        walking_record = Walking(
+            date=str(walk_date),
+            distance_km=new_distance
+        )
+        db.session.add(walking_record)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify(walking_schema.dump(walking_record)), 200
+
+
 
 #FALSK->WEB
 @app.route('/walking', methods=['GET'])
