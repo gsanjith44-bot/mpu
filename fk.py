@@ -262,7 +262,7 @@ def add_device():
     data = request.get_json()
 
     try:
-        device_data = device_schema.load(data)
+        device_data = device_schema.load(data, unknown="exclude")
     except ValidationError as err:
         return jsonify(err.messages), 400
 
