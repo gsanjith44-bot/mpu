@@ -237,13 +237,18 @@ def get_alerts():
 
     return jsonify(alerts_schema.dump(alerts)), 200
 
+@app.route('/alert/pending', methods=['GET'])
+def get_pending_alerts():
+    alerts = Alert.query.filter_by(status=1).all()
+    return jsonify(alerts_schema.dump(alerts)), 200
+
 #WEB->FLASK
 @app.route('/alert/<int:id>', methods=['PUT'])
 def update_alert(id):
     alert = db.session.get(Alert, id)
 
     if alert is None:
-        return jsonify({"error": "Alert not found"}), 404
+        return jsonify({"error": "butAlert not found"}), 404
 
     data = request.get_json()
 
@@ -254,6 +259,7 @@ def update_alert(id):
 
     if status not in [0, 1]:
         return jsonify({"error": "Invalid status"}), 400
+    alert.status = status
     
     try:
         db.session.commit()
@@ -262,6 +268,20 @@ def update_alert(id):
         return jsonify({"error": str(e)}), 500
     
     return jsonify(alert_schema.dump(alert)), 200
+    
+@app.route('/alert/resolve-pending', methods=['PUT'])
+def resolve_pending_alerts():
+    alerts = Alert.query.filter_by(status=1).all()
+
+    for alert in alerts:
+        alert.status = 0
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "All pending alerts resolved",
+        "resolved_count": len(alerts)
+    }), 200
 
 #ESP->FLASK
 @app.route('/device', methods=['POST'])
