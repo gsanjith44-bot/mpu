@@ -387,7 +387,7 @@ def device_status():
 
     # 10-second timeout
     old_status = device.esp32_status
-    new_status = 1 if elapsed < 10 else 0
+    new_status = 1 if elapsed < 20 else 0
 
     device.esp32_status = new_status
     log_device_change("ESP32", old_status, new_status)
